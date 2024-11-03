@@ -8,6 +8,31 @@ local checkCollisionCircleCircle = function(x1, y1, r1, x2, y2, r2)
   return (x1 - x2) ^ 2 + (y1 - y2) ^ 2 <= (r1 + r2) ^ 2
 end
 
+local function generateShootSound()
+  local rate = 44100
+  local length = 0.17
+  local baseFrequency = 760
+  local samples = rate * length
+  local soundData = love.sound.newSoundData(samples, rate, 16, 1)
+
+  for i = 0, samples - 1 do
+    local time = i / rate
+    local frequency = baseFrequency * (1 - time)
+    local amplitude = (1 - time) * 0.5 * math.sin(2 * math.pi * frequency * time)
+    amplitude = amplitude + 0.3 * (1 - time) * math.sin(2 * math.pi * (frequency * 1.5) * time)
+    amplitude = amplitude + 0.2 * (1 - time) * math.sin(2 * math.pi * (frequency * 2) * time)
+    amplitude = amplitude + 0.1 * (math.random() * 2 - 1) * (1 - time)
+    soundData:setSample(i, amplitude)
+  end
+
+  local source = love.audio.newSource(soundData)
+  source:setVolume(0.4)
+
+  return source
+end
+
+local shootSound = generateShootSound()
+
 local stars = {
   starsList = {},
   numStars = 200
@@ -244,6 +269,8 @@ function spaceship:shoot()
   end
 
   self.bullets:createBullet()
+
+  shootSound:play()
 
   self.lastShotTime = love.timer.getTime()
 end
