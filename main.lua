@@ -1,10 +1,38 @@
 local LEVEL_WIDTH = 1600
 local LEVEL_HEIGHT = 1200
+local GRID_SIZE = 20
 
 local world
 
 local checkCollisionCircleCircle = function(x1, y1, r1, x2, y2, r2)
   return (x1 - x2) ^ 2 + (y1 - y2) ^ 2 <= (r1 + r2) ^ 2
+end
+
+local function drawGrid(objects)
+  love.graphics.setColor(0.5, 0.5, 0.5)
+
+  local points = {}
+
+  for x = 0, LEVEL_WIDTH, GRID_SIZE do
+    for y = 0, LEVEL_HEIGHT, GRID_SIZE do
+      local offsetX, offsetY = 0, 0
+
+      for _, obj in ipairs(objects) do
+        local dx = x - obj.x
+        local dy = y - obj.y
+        local distance = math.sqrt(dx * dx + dy * dy)
+        local influence = math.exp(-distance / 100)
+
+        offsetX = offsetX + influence * (obj.x - x) * 0.5
+        offsetY = offsetY + influence * (obj.y - y) * 0.5
+      end
+
+      table.insert(points, x + offsetX)
+      table.insert(points, y + offsetY)
+    end
+  end
+
+  love.graphics.points(points)
 end
 
 local enemies = {}
@@ -299,6 +327,10 @@ function love.draw()
 
   love.graphics.setColor(1, 1, 1)
   love.graphics.rectangle('line', 0, 0, LEVEL_WIDTH, LEVEL_HEIGHT)
+
+  local objects = { spaceship }
+
+  drawGrid(objects)
 
   spaceship:draw()
   enemies:draw()
