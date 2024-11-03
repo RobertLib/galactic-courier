@@ -1,6 +1,8 @@
 local LEVEL_WIDTH = 1600
 local LEVEL_HEIGHT = 1200
 
+local world
+
 local checkCollisionCircleCircle = function(x1, y1, r1, x2, y2, r2)
   return (x1 - x2) ^ 2 + (y1 - y2) ^ 2 <= (r1 + r2) ^ 2
 end
@@ -17,8 +19,136 @@ local spaceship = {
   speed = 100,
   vertices = { 20, 0, -10, -10, -10, 10 },
   bullets = {},
-  lastShotTime = 0
+  lastShotTime = 0,
+  chain = {
+    x = love.graphics.getWidth() / 2,
+    y = love.graphics.getHeight() / 2,
+    length = 10,
+    segmentLength = 20,
+  }
 }
+
+function spaceship.bullets:init(parent)
+  self.parent = parent
+end
+
+function spaceship.bullets:createBullet()
+  local SPEED = 300
+
+  local bullet = {
+    x = self.parent.x + 15 * math.cos(self.parent.angle),
+    y = self.parent.y + 15 * math.sin(self.parent.angle),
+    xVel = self.parent.xVel + math.cos(self.parent.angle) * SPEED,
+    yVel = self.parent.yVel + math.sin(self.parent.angle) * SPEED,
+    angle = self.parent.angle,
+    radius = 2.5,
+    vertices = { 0, 0, 5, 0 }
+  }
+
+  -- Normalize the velocity vector
+  local length = math.sqrt(bullet.xVel ^ 2 + bullet.yVel ^ 2)
+  bullet.xVel = bullet.xVel / length * SPEED
+  bullet.yVel = bullet.yVel / length * SPEED
+
+  function bullet:update(dt)
+    self.x = self.x + self.xVel * dt
+    self.y = self.y + self.yVel * dt
+
+    for i, enemy in ipairs(enemies) do
+      if checkCollisionCircleCircle(
+            self.x, self.y, self.radius, enemy.x, enemy.y, enemy.radius) then
+        table.remove(enemies, i)
+        break
+      end
+    end
+  end
+
+  function bullet:draw()
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.push()
+    love.graphics.translate(self.x, self.y)
+    love.graphics.rotate(self.angle)
+    love.graphics.line(self.vertices)
+    love.graphics.pop()
+  end
+
+  table.insert(self, bullet)
+end
+
+function spaceship.bullets:update(dt)
+  for i, bullet in ipairs(self) do
+    bullet:update(dt)
+
+    if bullet.x < 0 or bullet.x > LEVEL_WIDTH or
+        bullet.y < 0 or bullet.y > LEVEL_HEIGHT then
+      table.remove(self, i)
+    end
+  end
+end
+
+function spaceship.bullets:draw()
+  for _, bullet in ipairs(self) do
+    bullet:draw()
+  end
+end
+
+function spaceship.chain:init(parent)
+  self.parent = parent
+
+  for i = 1, self.length do
+    local body = love.physics.newBody(
+      world,
+      self.x,
+      self.y + (i - 1) * self.segmentLength,
+      "dynamic")
+    local shape = love.physics.newCircleShape(5)
+    local fixture = love.physics.newFixture(body, shape, 1)
+
+    table.insert(self, { body = body, shape = shape, fixture = fixture })
+  end
+
+  for i = 1, self.length - 1 do
+    local joint = love.physics.newDistanceJoint(
+      self[i].body,
+      self[i + 1].body,
+      self.x,
+      self.y + (i - 1) * self.segmentLength,
+      self.x,
+      self.y + i * self.segmentLength,
+      false)
+
+    joint:setDampingRatio(0.01)
+  end
+
+  self.topJoint = love.physics.newMouseJoint(self[1].body, self.x, self.y)
+end
+
+function spaceship.chain:update()
+  self.topJoint:setTarget(self.parent.x, self.parent.y)
+
+  for _, segment in ipairs(self) do
+    segment.body:setPosition(
+      segment.body:getX() % LEVEL_WIDTH,
+      segment.body:getY() % LEVEL_HEIGHT)
+  end
+end
+
+function spaceship.chain:draw()
+  love.graphics.setColor(1, 1, 1)
+
+  for i, segment in ipairs(self) do
+    love.graphics.circle(
+      "line",
+      segment.body:getX(),
+      segment.body:getY(),
+      segment.shape:getRadius())
+  end
+end
+
+function spaceship:init()
+  self.bullets:init(self)
+  self.chain:init(self)
+end
 
 function spaceship:rotate(angle)
   self.angle = self.angle + angle
@@ -46,47 +176,7 @@ function spaceship:shoot()
     return
   end
 
-  local SPEED = 300
-
-  local bullet = {
-    x = self.x + 15 * math.cos(self.angle),
-    y = self.y + 15 * math.sin(self.angle),
-    xVel = self.xVel + math.cos(self.angle) * SPEED,
-    yVel = self.yVel + math.sin(self.angle) * SPEED,
-    angle = self.angle,
-    radius = 2.5,
-    vertices = { 0, 0, 5, 0 }
-  }
-
-  -- Normalize the velocity vector
-  local length = math.sqrt(bullet.xVel ^ 2 + bullet.yVel ^ 2)
-  bullet.xVel = bullet.xVel / length * SPEED
-  bullet.yVel = bullet.yVel / length * SPEED
-
-  function bullet:update(dt)
-    self.x = self.x + self.xVel * dt
-    self.y = self.y + self.yVel * dt
-
-    for i, enemy in ipairs(enemies) do
-      if checkCollisionCircleCircle(
-            self.x, self.y, self.radius,
-            enemy.x, enemy.y, enemy.radius) then
-        table.remove(enemies, i)
-        break
-      end
-    end
-  end
-
-  function bullet:draw()
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.push()
-    love.graphics.translate(self.x, self.y)
-    love.graphics.rotate(self.angle)
-    love.graphics.line(self.vertices)
-    love.graphics.pop()
-  end
-
-  table.insert(self.bullets, bullet)
+  self.bullets:createBullet()
 
   self.lastShotTime = love.timer.getTime()
 end
@@ -110,14 +200,8 @@ function spaceship:update(dt)
   self.x = self.x % LEVEL_WIDTH
   self.y = self.y % LEVEL_HEIGHT
 
-  for i, bullet in ipairs(self.bullets) do
-    bullet:update(dt)
-
-    if bullet.x < 0 or bullet.x > LEVEL_WIDTH or
-        bullet.y < 0 or bullet.y > LEVEL_HEIGHT then
-      table.remove(self.bullets, i)
-    end
-  end
+  self.bullets:update(dt)
+  self.chain:update()
 end
 
 function spaceship:drawThruster()
@@ -141,9 +225,8 @@ function spaceship:draw()
     self:drawThruster()
   end
 
-  for _, bullet in ipairs(self.bullets) do
-    bullet:draw()
-  end
+  self.bullets:draw()
+  self.chain:draw()
 end
 
 local function spawnEnemy()
@@ -189,31 +272,46 @@ end
 function love.load()
   love.window.setTitle('Galactic Courier')
 
+  love.physics.setMeter(1)
+
+  world = love.physics.newWorld(0, 0, true)
+
+  spaceship:init()
+
   for i = 1, 10 do
     spawnEnemy()
   end
 end
 
 function love.update(dt)
+  world:update(dt)
+
   spaceship:update(dt)
   enemies:update(dt)
 end
 
 function love.draw()
+  love.graphics.push()
+
   love.graphics.translate(
     love.graphics.getWidth() / 2 - spaceship.x,
-    love.graphics.getHeight() / 2 - spaceship.y
-  )
+    love.graphics.getHeight() / 2 - spaceship.y)
 
   love.graphics.setColor(1, 1, 1)
   love.graphics.rectangle('line', 0, 0, LEVEL_WIDTH, LEVEL_HEIGHT)
 
   spaceship:draw()
   enemies:draw()
+
+  love.graphics.pop()
 end
 
 function love.keypressed(key)
   if key == 'f' then
     love.window.setFullscreen(not love.window.getFullscreen())
+  end
+
+  if key == 'r' then
+    love.event.quit('restart')
   end
 end
