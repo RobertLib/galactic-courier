@@ -8,8 +8,47 @@ local checkCollisionCircleCircle = function(x1, y1, r1, x2, y2, r2)
   return (x1 - x2) ^ 2 + (y1 - y2) ^ 2 <= (r1 + r2) ^ 2
 end
 
+local stars = {
+  starsList = {},
+  numStars = 200
+}
+
+function stars:load()
+  self.starsList = {}
+
+  for i = 1, self.numStars do
+    table.insert(self.starsList, {
+      x = love.math.random(0, love.graphics.getWidth()),
+      y = love.math.random(0, love.graphics.getHeight()),
+      intensity = love.math.random(),
+      speed = love.math.random() * 0.5 + 0.5
+    })
+  end
+end
+
+function stars:update(dt)
+  for _, star in ipairs(self.starsList) do
+    star.intensity = star.intensity + star.speed * dt
+
+    if star.intensity > 1 then
+      star.intensity = 1
+      star.speed = -star.speed
+    elseif star.intensity < 0 then
+      star.intensity = 0
+      star.speed = -star.speed
+    end
+  end
+end
+
+function stars:draw()
+  for _, star in ipairs(self.starsList) do
+    love.graphics.setColor(1, 1, 1, star.intensity)
+    love.graphics.points(star.x, star.y)
+  end
+end
+
 local function drawGrid(objects)
-  love.graphics.setColor(0.5, 0.5, 0.5)
+  love.graphics.setColor(1, 1, 1, 0.5)
 
   local points = {}
 
@@ -56,7 +95,7 @@ local spaceship = {
   }
 }
 
-function spaceship.bullets:init(parent)
+function spaceship.bullets:load(parent)
   self.parent = parent
 end
 
@@ -120,7 +159,7 @@ function spaceship.bullets:draw()
   end
 end
 
-function spaceship.chain:init(parent)
+function spaceship.chain:load(parent)
   self.parent = parent
 
   for i = 1, self.length do
@@ -173,9 +212,9 @@ function spaceship.chain:draw()
   end
 end
 
-function spaceship:init()
-  self.bullets:init(self)
-  self.chain:init(self)
+function spaceship:load()
+  self.bullets:load(self)
+  self.chain:load(self)
 end
 
 function spaceship:rotate(angle)
@@ -304,7 +343,8 @@ function love.load()
 
   world = love.physics.newWorld(0, 0, true)
 
-  spaceship:init()
+  stars:load()
+  spaceship:load()
 
   for i = 1, 10 do
     spawnEnemy()
@@ -314,11 +354,14 @@ end
 function love.update(dt)
   world:update(dt)
 
+  stars:update(dt)
   spaceship:update(dt)
   enemies:update(dt)
 end
 
 function love.draw()
+  stars:draw()
+
   love.graphics.push()
 
   love.graphics.translate(
@@ -341,6 +384,7 @@ end
 function love.keypressed(key)
   if key == 'f' then
     love.window.setFullscreen(not love.window.getFullscreen())
+    stars:load()
   end
 
   if key == 'r' then
