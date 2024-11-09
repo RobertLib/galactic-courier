@@ -2,7 +2,10 @@ local LEVEL_WIDTH = 1600
 local LEVEL_HEIGHT = 1200
 local GRID_SIZE = 20
 
+local font = love.graphics.newFont(20)
 local world
+
+local level = 1
 
 local checkCollisionCircleCircle = function(x1, y1, r1, x2, y2, r2)
   return (x1 - x2) ^ 2 + (y1 - y2) ^ 2 <= (r1 + r2) ^ 2
@@ -73,7 +76,7 @@ function stars:draw()
 end
 
 local function drawGrid(objects)
-  love.graphics.setColor(1, 1, 1, 0.5)
+  love.graphics.setColor(1, 1, 1, 0.7)
 
   local points = {}
 
@@ -99,7 +102,46 @@ local function drawGrid(objects)
   love.graphics.points(points)
 end
 
+local INIT_ENEMIES = 10
+
 local enemies = {}
+
+local INIT_COLLECTABLES = 10
+
+local collectables = {}
+
+local unloading = {
+  x = love.graphics.getWidth() / 2,
+  y = love.graphics.getHeight() / 2,
+  radius = 50,
+}
+
+function unloading:load()
+  self.attachedCollectables = {}
+end
+
+function unloading:update(dt)
+  for _, collectable in ipairs(self.attachedCollectables) do
+    local dx = self.x - collectable.x
+    local dy = self.y - collectable.y
+    local distance = math.sqrt(dx * dx + dy * dy)
+    local speed = 150
+
+    if distance > collectable.radius then
+      collectable.x = collectable.x + (dx / distance) * speed * dt
+      collectable.y = collectable.y + (dy / distance) * speed * dt
+    end
+  end
+end
+
+function unloading:draw()
+  love.graphics.setColor(0.8, 0.8, 1)
+  love.graphics.circle('line', self.x, self.y, self.radius)
+
+  for _, collectable in ipairs(self.attachedCollectables) do
+    collectable:draw()
+  end
+end
 
 local spaceship = {
   x = love.graphics.getWidth() / 2,
@@ -117,11 +159,14 @@ local spaceship = {
     y = love.graphics.getHeight() / 2,
     length = 10,
     segmentLength = 20,
+    chainList = {}
   }
 }
 
 function spaceship.bullets:load(parent)
   self.parent = parent
+
+  self = {}
 end
 
 function spaceship.bullets:createBullet()
@@ -187,6 +232,11 @@ end
 function spaceship.chain:load(parent)
   self.parent = parent
 
+  self.x = self.parent.x
+  self.y = self.parent.y
+
+  self.chainList = {}
+
   for i = 1, self.length do
     local body = love.physics.newBody(
       world,
@@ -196,48 +246,104 @@ function spaceship.chain:load(parent)
     local shape = love.physics.newCircleShape(5)
     local fixture = love.physics.newFixture(body, shape, 1)
 
-    table.insert(self, { body = body, shape = shape, fixture = fixture })
+    table.insert(self.chainList, { body = body, shape = shape, fixture = fixture })
   end
 
   for i = 1, self.length - 1 do
-    local joint = love.physics.newDistanceJoint(
-      self[i].body,
-      self[i + 1].body,
+    love.physics.newRopeJoint(
+      self.chainList[i].body,
+      self.chainList[i + 1].body,
       self.x,
       self.y + (i - 1) * self.segmentLength,
       self.x,
       self.y + i * self.segmentLength,
+      self.segmentLength,
       false)
-
-    joint:setDampingRatio(0.01)
   end
 
-  self.topJoint = love.physics.newMouseJoint(self[1].body, self.x, self.y)
+  self.topJoint = love.physics.newMouseJoint(self.chainList[1].body, self.x, self.y)
 end
 
-function spaceship.chain:update()
+function spaceship.chain:update(dt)
   self.topJoint:setTarget(self.parent.x, self.parent.y)
 
-  for _, segment in ipairs(self) do
+  for _, segment in ipairs(self.chainList) do
     segment.body:setPosition(
       segment.body:getX() % LEVEL_WIDTH,
       segment.body:getY() % LEVEL_HEIGHT)
+  end
+
+  local lastLink = self.chainList[#self.chainList]
+  lastLink.attachedCollectables = lastLink.attachedCollectables or {}
+
+  for i, collectable in ipairs(collectables) do
+    if checkCollisionCircleCircle(
+          lastLink.body:getX(),
+          lastLink.body:getY(),
+          lastLink.shape:getRadius() * 10,
+          collectable.x,
+          collectable.y,
+          collectable.radius * 10) then
+      table.insert(lastLink.attachedCollectables, collectable)
+      table.remove(collectables, i)
+      break
+    end
+  end
+
+  for _, collectable in ipairs(lastLink.attachedCollectables) do
+    local dx = lastLink.body:getX() - collectable.x
+    local dy = lastLink.body:getY() - collectable.y
+    local distance = math.sqrt(dx * dx + dy * dy)
+    local speed = 150
+
+    if distance > lastLink.shape:getRadius() + collectable.radius then
+      collectable.x = collectable.x + (dx / distance) * speed * dt
+      collectable.y = collectable.y + (dy / distance) * speed * dt
+    end
+  end
+
+  if checkCollisionCircleCircle(
+        lastLink.body:getX(),
+        lastLink.body:getY(),
+        lastLink.shape:getRadius() * 2,
+        unloading.x,
+        unloading.y,
+        unloading.radius * 2) then
+    for _, collectable in ipairs(lastLink.attachedCollectables) do
+      table.insert(unloading.attachedCollectables, collectable)
+    end
+
+    lastLink.attachedCollectables = {}
   end
 end
 
 function spaceship.chain:draw()
   love.graphics.setColor(1, 1, 1)
 
-  for i, segment in ipairs(self) do
+  for i, segment in ipairs(self.chainList) do
     love.graphics.circle(
       "line",
       segment.body:getX(),
       segment.body:getY(),
       segment.shape:getRadius())
   end
+
+  local lastLink = self.chainList[#self.chainList]
+
+  if lastLink.attachedCollectables then
+    for _, collectable in ipairs(lastLink.attachedCollectables) do
+      collectable:draw()
+    end
+  end
 end
 
 function spaceship:load()
+  self.x = love.graphics.getWidth() / 2
+  self.y = love.graphics.getHeight() / 2
+  self.xVel = 0
+  self.yVel = 0
+  self.angle = -math.pi / 2
+
   self.bullets:load(self)
   self.chain:load(self)
 end
@@ -295,7 +401,7 @@ function spaceship:update(dt)
   self.y = self.y % LEVEL_HEIGHT
 
   self.bullets:update(dt)
-  self.chain:update()
+  self.chain:update(dt)
 end
 
 function spaceship:drawThruster()
@@ -351,6 +457,14 @@ local function spawnEnemy()
   table.insert(enemies, enemy)
 end
 
+function enemies:load()
+  self = {}
+
+  for i = 1, INIT_ENEMIES do
+    spawnEnemy()
+  end
+end
+
 function enemies:update(dt)
   for _, enemy in ipairs(enemies) do
     enemy:update(dt)
@@ -363,6 +477,43 @@ function enemies:draw()
   end
 end
 
+local function spawnCollectable()
+  local collectable = {
+    x = love.math.random(LEVEL_WIDTH),
+    y = love.math.random(LEVEL_HEIGHT),
+    radius = 5
+  }
+
+  function collectable:draw()
+    love.graphics.setColor(0.8, 1, 0.8)
+    love.graphics.circle('line', self.x, self.y, self.radius)
+  end
+
+  table.insert(collectables, collectable)
+end
+
+function collectables:load()
+  self = {}
+
+  for i = 1, INIT_COLLECTABLES do
+    spawnCollectable()
+  end
+end
+
+function collectables:draw()
+  for _, collectable in ipairs(self) do
+    collectable:draw()
+  end
+end
+
+local function loadLevel()
+  stars:load()
+  enemies:load()
+  collectables:load()
+  unloading:load()
+  spaceship:load()
+end
+
 function love.load()
   love.window.setTitle('Galactic Courier')
 
@@ -370,20 +521,21 @@ function love.load()
 
   world = love.physics.newWorld(0, 0, true)
 
-  stars:load()
-  spaceship:load()
-
-  for i = 1, 10 do
-    spawnEnemy()
-  end
+  loadLevel()
 end
 
 function love.update(dt)
   world:update(dt)
 
   stars:update(dt)
-  spaceship:update(dt)
   enemies:update(dt)
+  unloading:update(dt)
+  spaceship:update(dt)
+
+  if #unloading.attachedCollectables == INIT_COLLECTABLES then
+    level = level + 1
+    loadLevel()
+  end
 end
 
 function love.draw()
@@ -402,10 +554,17 @@ function love.draw()
 
   drawGrid(objects)
 
-  spaceship:draw()
   enemies:draw()
+  collectables:draw()
+  unloading:draw()
+  spaceship:draw()
 
   love.graphics.pop()
+
+  love.graphics.setFont(font)
+  love.graphics.setColor(1, 1, 1)
+  love.graphics.print("Collected: " .. #unloading.attachedCollectables .. " / " .. INIT_COLLECTABLES, 10, 10)
+  love.graphics.print("Level: " .. level, 10, 40)
 end
 
 function love.keypressed(key)
