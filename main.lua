@@ -9,6 +9,8 @@ local world
 
 local level = 1
 
+local camera = { x = 0, y = 0 }
+
 local checkCollisionCircleCircle = function(x1, y1, r1, x2, y2, r2)
   return (x1 - x2) ^ 2 + (y1 - y2) ^ 2 <= (r1 + r2) ^ 2
 end
@@ -82,8 +84,21 @@ local function drawGrid(objects)
 
   local points = {}
 
-  for x = 0, LEVEL_WIDTH, GRID_SIZE do
-    for y = 0, LEVEL_HEIGHT, GRID_SIZE do
+  local windowWidth = love.graphics.getWidth()
+  local windowHeight = love.graphics.getHeight()
+
+  local minX = math.max(0, camera.x - windowWidth / 2)
+  local maxX = math.min(LEVEL_WIDTH, camera.x + windowWidth / 2)
+  local minY = math.max(0, camera.y - windowHeight / 2)
+  local maxY = math.min(LEVEL_HEIGHT, camera.y + windowHeight / 2)
+
+  minX = math.floor(minX / GRID_SIZE) * GRID_SIZE
+  maxX = math.ceil(maxX / GRID_SIZE) * GRID_SIZE
+  minY = math.floor(minY / GRID_SIZE) * GRID_SIZE
+  maxY = math.ceil(maxY / GRID_SIZE) * GRID_SIZE
+
+  for x = minX, maxX, GRID_SIZE do
+    for y = minY, maxY, GRID_SIZE do
       local offsetX, offsetY = 0, 0
 
       for _, obj in ipairs(objects) do
@@ -423,6 +438,9 @@ function spaceship:update(dt)
   self.x = self.x % LEVEL_WIDTH
   self.y = self.y % LEVEL_HEIGHT
 
+  camera.x = self.x
+  camera.y = self.y
+
   self.bullets:update(dt)
   self.chain:update(dt)
 end
@@ -568,8 +586,8 @@ function love.draw()
   love.graphics.push()
 
   love.graphics.translate(
-    love.graphics.getWidth() / 2 - spaceship.x,
-    love.graphics.getHeight() / 2 - spaceship.y)
+    love.graphics.getWidth() / 2 - camera.x,
+    love.graphics.getHeight() / 2 - camera.y)
 
   love.graphics.setColor(1, 1, 1)
   love.graphics.rectangle('line', 0, 0, LEVEL_WIDTH, LEVEL_HEIGHT)
