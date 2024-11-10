@@ -1,3 +1,5 @@
+local WINDOW_WIDTH = 800
+local WINDOW_HEIGHT = 600
 local LEVEL_WIDTH = 1600
 local LEVEL_HEIGHT = 1200
 local GRID_SIZE = 20
@@ -114,6 +116,7 @@ local unloading = {
   x = love.graphics.getWidth() / 2,
   y = love.graphics.getHeight() / 2,
   radius = 50,
+  angle = 0,
 }
 
 function unloading:load()
@@ -121,15 +124,26 @@ function unloading:load()
 end
 
 function unloading:update(dt)
-  for _, collectable in ipairs(self.attachedCollectables) do
-    local dx = self.x - collectable.x
-    local dy = self.y - collectable.y
+  self.angle = self.angle + math.pi * dt
+
+  local angleStep = (2 * math.pi) / #self.attachedCollectables
+  local radius = self.radius / 2
+
+  for i, collectable in ipairs(self.attachedCollectables) do
+    local angle = i * angleStep + self.angle
+    local targetX = self.x + radius * math.cos(angle)
+    local targetY = self.y + radius * math.sin(angle)
+    local dx = targetX - collectable.x
+    local dy = targetY - collectable.y
     local distance = math.sqrt(dx * dx + dy * dy)
     local speed = 150
 
     if distance > collectable.radius then
       collectable.x = collectable.x + (dx / distance) * speed * dt
       collectable.y = collectable.y + (dy / distance) * speed * dt
+    else
+      collectable.x = targetX
+      collectable.y = targetY
     end
   end
 end
@@ -290,15 +304,24 @@ function spaceship.chain:update(dt)
     end
   end
 
-  for _, collectable in ipairs(lastLink.attachedCollectables) do
-    local dx = lastLink.body:getX() - collectable.x
-    local dy = lastLink.body:getY() - collectable.y
+  local angleStep = (2 * math.pi) / #lastLink.attachedCollectables
+  local radius = lastLink.shape:getRadius() + 10
+
+  for i, collectable in ipairs(lastLink.attachedCollectables) do
+    local angle = i * angleStep
+    local targetX = lastLink.body:getX() + radius * math.cos(angle)
+    local targetY = lastLink.body:getY() + radius * math.sin(angle)
+    local dx = targetX - collectable.x
+    local dy = targetY - collectable.y
     local distance = math.sqrt(dx * dx + dy * dy)
     local speed = 150
 
     if distance > lastLink.shape:getRadius() + collectable.radius then
       collectable.x = collectable.x + (dx / distance) * speed * dt
       collectable.y = collectable.y + (dy / distance) * speed * dt
+    else
+      collectable.x = targetX
+      collectable.y = targetY
     end
   end
 
@@ -515,6 +538,7 @@ local function loadLevel()
 end
 
 function love.load()
+  love.window.setMode(WINDOW_WIDTH, WINDOW_HEIGHT)
   love.window.setTitle('Galactic Courier')
 
   love.physics.setMeter(1)
