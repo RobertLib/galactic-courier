@@ -16,6 +16,24 @@ local checkCollisionCircles = function(x1, y1, r1, x2, y2, r2)
   return (x1 - x2) ^ 2 + (y1 - y2) ^ 2 <= (r1 + r2) ^ 2
 end
 
+local timeouts = {}
+
+local function setTimeout(callback, delay)
+  table.insert(timeouts, {
+    callback = callback,
+    time = love.timer.getTime() + delay
+  })
+end
+
+function timeouts:update()
+  for i, timeout in ipairs(timeouts) do
+    if love.timer.getTime() >= timeout.time then
+      timeout.callback()
+      table.remove(timeouts, i)
+    end
+  end
+end
+
 local function generateShootSound()
   local rate = 44100
   local length = 0.17
@@ -39,7 +57,32 @@ local function generateShootSound()
   return source
 end
 
-local shootSound = generateShootSound()
+local shootSound
+
+local function generateExplosionSound()
+  local rate = 44100
+  local length = 0.5
+  local baseFrequency = 760
+  local samples = rate * length
+  local soundData = love.sound.newSoundData(samples, rate, 16, 1)
+
+  for i = 0, samples - 1 do
+    local time = i / rate
+    local frequency = baseFrequency * (1 - time)
+    local amplitude = (1 - time) * 0.5 * math.sin(2 * math.pi * frequency * time)
+    amplitude = amplitude + 0.3 * (1 - time) * math.sin(2 * math.pi * (frequency * 1.5) * time)
+    amplitude = amplitude + 0.2 * (1 - time) * math.sin(2 * math.pi * (frequency * 2) * time)
+    amplitude = amplitude + 0.1 * (math.random() * 2 - 1) * (1 - time)
+    soundData:setSample(i, amplitude)
+  end
+
+  local source = love.audio.newSource(soundData)
+  source:setVolume(0.4)
+
+  return source
+end
+
+local explosionSound
 
 local stars = {
   starsList = {},
@@ -120,6 +163,55 @@ local function drawGrid(objects)
   love.graphics.points(points)
 end
 
+local particles = {}
+
+function particles:create(x, y, num, speed, radius, life, color)
+  for i = 1, num do
+    local angle = 2 * math.pi * love.math.random()
+    local randomSpeed = speed * love.math.random()
+    local xVel = math.cos(angle) * randomSpeed
+    local yVel = math.sin(angle) * randomSpeed
+
+    local particle = {
+      x = x,
+      y = y,
+      xVel = xVel,
+      yVel = yVel,
+      radius = radius,
+      life = life
+    }
+
+    function particle:update(dt)
+      self.x = self.x + self.xVel * dt
+      self.y = self.y + self.yVel * dt
+      self.life = self.life - dt
+    end
+
+    function particle:draw()
+      love.graphics.setColor(color[1], color[2], color[3], self.life)
+      love.graphics.circle('fill', self.x, self.y, self.radius)
+    end
+
+    table.insert(particles, particle)
+  end
+end
+
+function particles:update(dt)
+  for i, particle in ipairs(particles) do
+    particle:update(dt)
+
+    if particle.life <= 0 then
+      table.remove(particles, i)
+    end
+  end
+end
+
+function particles:draw()
+  for _, particle in ipairs(particles) do
+    particle:draw()
+  end
+end
+
 local INIT_ENEMIES = 10
 
 local enemies = {}
@@ -181,6 +273,8 @@ local spaceship = {
   angle = -math.pi / 2,
   radius = 10,
   speed = 100,
+  dead = false,
+  opacity = 1,
   vertices = { 20, 0, -10, -10, -10, 10 },
   bullets = {},
   lastShotTime = 0,
@@ -189,19 +283,31 @@ local spaceship = {
     y = love.graphics.getHeight() / 2,
     length = 10,
     segmentLength = 20,
-    chainList = {}
+    chainList = {},
+    joints = {}
   }
 }
 
 function spaceship:handleCollision()
-  local lastLink = self.chain.chainList[#self.chain.chainList]
+  lives = lives - 1
 
-  for _, collectable in ipairs(lastLink.attachedCollectables) do
-    table.insert(collectables, collectable)
+  self.dead = true
+  self:explode()
+
+  setTimeout(function()
+    self:load()
+  end, 1)
+end
+
+function spaceship:explode()
+  particles:create(self.x, self.y, 50, 100, 5, 1, { 1, 1, 1 })
+  explosionSound:play()
+
+  for _, joint in ipairs(self.chain.joints) do
+    joint:destroy()
   end
 
-  lives = lives - 1
-  self:load()
+  self.chain.topJoint:destroy()
 end
 
 function spaceship.bullets:load(parent)
@@ -235,6 +341,7 @@ function spaceship.bullets:createBullet()
     for i, enemy in ipairs(enemies) do
       if checkCollisionCircles(
             self.x, self.y, self.radius, enemy.x, enemy.y, enemy.radius) then
+        enemy:explode()
         table.remove(enemies, i)
         break
       end
@@ -273,10 +380,19 @@ end
 function spaceship.chain:load(parent)
   self.parent = parent
 
+  local lastLink = self.chainList[#self.chainList]
+
+  if lastLink and lastLink.attachedCollectables then
+    for _, collectable in ipairs(lastLink.attachedCollectables) do
+      table.insert(collectables, collectable)
+    end
+  end
+
   self.x = self.parent.x
   self.y = self.parent.y
 
   self.chainList = {}
+  self.joints = {}
 
   for i = 1, self.length do
     local body = love.physics.newBody(
@@ -291,7 +407,7 @@ function spaceship.chain:load(parent)
   end
 
   for i = 1, self.length - 1 do
-    love.physics.newRopeJoint(
+    local joint = love.physics.newRopeJoint(
       self.chainList[i].body,
       self.chainList[i + 1].body,
       self.x,
@@ -300,13 +416,17 @@ function spaceship.chain:load(parent)
       self.y + i * self.segmentLength,
       self.segmentLength,
       false)
+
+    table.insert(self.joints, joint)
   end
 
   self.topJoint = love.physics.newMouseJoint(self.chainList[1].body, self.x, self.y)
 end
 
 function spaceship.chain:update(dt)
-  self.topJoint:setTarget(self.parent.x, self.parent.y)
+  if not self.topJoint:isDestroyed() then
+    self.topJoint:setTarget(self.parent.x, self.parent.y)
+  end
 
   for _, segment in ipairs(self.chainList) do
     for i, enemy in ipairs(enemies) do
@@ -378,7 +498,7 @@ function spaceship.chain:update(dt)
 end
 
 function spaceship.chain:draw()
-  love.graphics.setColor(1, 1, 1)
+  love.graphics.setColor(1, 1, 1, self.parent.opacity)
 
   for i, segment in ipairs(self.chainList) do
     love.graphics.circle(
@@ -403,6 +523,8 @@ function spaceship:load()
   self.xVel = 0
   self.yVel = 0
   self.angle = -math.pi / 2
+  self.dead = false
+  self.opacity = 1
 
   self.bullets:load(self)
   self.chain:load(self)
@@ -442,17 +564,19 @@ function spaceship:shoot()
 end
 
 function spaceship:update(dt)
-  if love.keyboard.isDown('right') then
-    self:rotate(2 * math.pi * dt)
-  end
-  if love.keyboard.isDown('left') then
-    self:rotate(-2 * math.pi * dt)
-  end
-  if love.keyboard.isDown('up') then
-    self:accelerate(dt)
-  end
-  if love.keyboard.isDown('space') then
-    self:shoot()
+  if not self.dead then
+    if love.keyboard.isDown('right') then
+      self:rotate(2 * math.pi * dt)
+    end
+    if love.keyboard.isDown('left') then
+      self:rotate(-2 * math.pi * dt)
+    end
+    if love.keyboard.isDown('up') then
+      self:accelerate(dt)
+    end
+    if love.keyboard.isDown('space') then
+      self:shoot()
+    end
   end
 
   self:move(dt)
@@ -469,15 +593,20 @@ function spaceship:update(dt)
   for i, enemy in ipairs(enemies) do
     if checkCollisionCircles(
           self.x, self.y, self.radius, enemy.x, enemy.y, enemy.radius) then
+      enemy:explode()
       table.remove(enemies, i)
       self:handleCollision()
       break
     end
   end
+
+  if self.dead and self.opacity > 0 then
+    self.opacity = self.opacity - dt
+  end
 end
 
 function spaceship:drawThruster()
-  love.graphics.setColor(0.8, 0.8, 1)
+  love.graphics.setColor(0.8, 0.8, 1, self.opacity)
   love.graphics.push()
   love.graphics.translate(self.x, self.y)
   love.graphics.rotate(self.angle)
@@ -486,7 +615,7 @@ function spaceship:drawThruster()
 end
 
 function spaceship:draw()
-  love.graphics.setColor(1, 1, 1)
+  love.graphics.setColor(1, 1, 1, self.opacity)
   love.graphics.push()
   love.graphics.translate(self.x, self.y)
   love.graphics.rotate(self.angle)
@@ -512,6 +641,11 @@ local function spawnEnemy()
     speed = 50,
     vertices = { 0, 10, 10, 0, 0, -10, -10, 0 }
   }
+
+  function enemy:explode()
+    particles:create(self.x, self.y, 10, 100, 2.5, 1, { 1, 0.8, 0.8 })
+    explosionSound:play()
+  end
 
   function enemy:update(dt)
 
@@ -605,13 +739,18 @@ function love.load()
 
   world = love.physics.newWorld(0, 0, true)
 
+  shootSound = generateShootSound()
+  explosionSound = generateExplosionSound()
+
   loadLevel()
 end
 
 function love.update(dt)
   world:update(dt)
 
+  timeouts:update()
   stars:update(dt)
+  particles:update(dt)
   enemies:update(dt)
   collectables:update(dt)
   unloading:update(dt)
@@ -639,6 +778,7 @@ function love.draw()
 
   drawGrid(objects)
 
+  particles:draw()
   enemies:draw()
   collectables:draw()
   unloading:draw()
