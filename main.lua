@@ -19,6 +19,12 @@ end
 local timeouts = {}
 
 local function setTimeout(callback, delay)
+  for _, timeout in ipairs(timeouts) do
+    if timeout.callback == callback then
+      return
+    end
+  end
+
   table.insert(timeouts, {
     callback = callback,
     time = love.timer.getTime() + delay
@@ -289,6 +295,10 @@ local spaceship = {
 }
 
 function spaceship:handleCollision()
+  if self.dead then
+    return
+  end
+
   lives = lives - 1
 
   self.dead = true
@@ -581,8 +591,10 @@ function spaceship:update(dt)
 
   self:move(dt)
 
-  self.x = self.x % LEVEL_WIDTH
-  self.y = self.y % LEVEL_HEIGHT
+  if self.x < 0 or self.x > LEVEL_WIDTH or
+      self.y < 0 or self.y > LEVEL_HEIGHT then
+    self:handleCollision()
+  end
 
   camera.x = self.x
   camera.y = self.y
@@ -731,6 +743,11 @@ local function loadLevel()
   spaceship:load()
 end
 
+local function nextLevel()
+  level = level + 1
+  loadLevel()
+end
+
 function love.load()
   love.window.setMode(WINDOW_WIDTH, WINDOW_HEIGHT)
   love.window.setTitle('Galactic Courier')
@@ -757,8 +774,7 @@ function love.update(dt)
   spaceship:update(dt)
 
   if #unloading.attachedCollectables == INIT_COLLECTABLES then
-    level = level + 1
-    loadLevel()
+    setTimeout(nextLevel, 2)
   end
 end
 
