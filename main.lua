@@ -7,8 +7,8 @@ local GRID_SIZE = 20
 local font = love.graphics.newFont(20)
 local world
 
-local lives = 3
-local level = 1
+local lives
+local level
 
 local camera = { x = 0, y = 0 }
 
@@ -105,7 +105,7 @@ function particles:draw()
   end
 end
 
-local gameState = 'playing'
+local gameState
 
 local stateLoaders = {}
 
@@ -861,6 +861,37 @@ end
 
 stateLoaders.playing = playing.load
 
+local mainMenu = {}
+
+function mainMenu:load()
+
+end
+
+function mainMenu:update(dt)
+  if love.keyboard.isDown('return') then
+    changeState('playing')
+  end
+end
+
+function mainMenu:draw()
+  love.graphics.setFont(font)
+  love.graphics.setColor(1, 1, 1)
+  love.graphics.printf(
+    'Galactic Courier',
+    0,
+    love.graphics.getHeight() / 2 - font:getHeight() / 1.25,
+    love.graphics.getWidth(),
+    'center')
+  love.graphics.printf(
+    'Press Enter to start',
+    0,
+    love.graphics.getHeight() / 2 + font:getHeight() / 1.25,
+    love.graphics.getWidth(),
+    'center')
+end
+
+stateLoaders.mainMenu = mainMenu.load
+
 local gameOver = {}
 
 function gameOver:load()
@@ -931,12 +962,14 @@ function love.load()
 
   world = love.physics.newWorld(0, 0, true)
 
-  playing:load()
+  changeState('mainMenu')
 end
 
 function love.update(dt)
   if gameState == 'playing' then
     playing:update(dt)
+  elseif gameState == 'mainMenu' then
+    mainMenu:update(dt)
   elseif gameState == 'gameOver' then
     gameOver:update(dt)
   elseif gameState == 'win' then
@@ -947,6 +980,8 @@ end
 function love.draw()
   if gameState == 'playing' then
     playing:draw()
+  elseif gameState == 'mainMenu' then
+    mainMenu:draw()
   elseif gameState == 'gameOver' then
     gameOver:draw()
   elseif gameState == 'win' then
