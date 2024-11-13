@@ -795,6 +795,11 @@ end
 
 local function nextLevel()
   level = level + 1
+
+  if level > 3 then
+    changeState('win')
+  end
+
   loadLevel()
 end
 
@@ -887,6 +892,37 @@ end
 
 stateLoaders.gameOver = gameOver.load
 
+local win = {}
+
+function win:load()
+
+end
+
+function win:update(dt)
+  if love.keyboard.isDown('return') then
+    changeState('playing')
+  end
+end
+
+function win:draw()
+  love.graphics.setFont(font)
+  love.graphics.setColor(1, 1, 1)
+  love.graphics.printf(
+    'You win!',
+    0,
+    love.graphics.getHeight() / 2 - font:getHeight() / 1.25,
+    love.graphics.getWidth(),
+    'center')
+  love.graphics.printf(
+    'Press Enter to restart',
+    0,
+    love.graphics.getHeight() / 2 + font:getHeight() / 1.25,
+    love.graphics.getWidth(),
+    'center')
+end
+
+stateLoaders.win = win.load
+
 function love.load()
   love.window.setMode(WINDOW_WIDTH, WINDOW_HEIGHT)
   love.window.setTitle('Galactic Courier')
@@ -903,6 +939,8 @@ function love.update(dt)
     playing:update(dt)
   elseif gameState == 'gameOver' then
     gameOver:update(dt)
+  elseif gameState == 'win' then
+    win:update(dt)
   end
 end
 
@@ -911,6 +949,8 @@ function love.draw()
     playing:draw()
   elseif gameState == 'gameOver' then
     gameOver:draw()
+  elseif gameState == 'win' then
+    win:draw()
   end
 end
 
