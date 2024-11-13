@@ -10,6 +10,8 @@ local world
 local lives
 local level
 
+local pause = false
+
 local camera = { x = 0, y = 0 }
 
 local checkCollisionCircles = function(x1, y1, r1, x2, y2, r2)
@@ -33,7 +35,7 @@ end
 
 function timeouts:clear()
   for k in pairs(self) do
-    if type(k) == "number" then
+    if type(k) == 'number' then
       self[k] = nil
     end
   end
@@ -52,7 +54,7 @@ local particles = {}
 
 function particles:clear()
   for k in pairs(self) do
-    if type(k) == "number" then
+    if type(k) == 'number' then
       self[k] = nil
     end
   end
@@ -359,7 +361,7 @@ function spaceship.bullets:load(parent)
   self.parent = parent
 
   for k in pairs(self) do
-    if type(k) == "number" then
+    if type(k) == 'number' then
       self[k] = nil
     end
   end
@@ -676,7 +678,7 @@ function spaceship:draw()
   love.graphics.polygon('line', self.vertices)
   love.graphics.pop()
 
-  if love.keyboard.isDown('up') then
+  if love.keyboard.isDown('up') and not pause then
     self:drawThruster()
   end
 
@@ -719,7 +721,7 @@ end
 
 function enemies:load()
   for k in pairs(self) do
-    if type(k) == "number" then
+    if type(k) == 'number' then
       self[k] = nil
     end
   end
@@ -763,7 +765,7 @@ end
 
 function collectables:load()
   for k in pairs(self) do
-    if type(k) == "number" then
+    if type(k) == 'number' then
       self[k] = nil
     end
   end
@@ -813,6 +815,14 @@ function playing:load()
 end
 
 function playing:update(dt)
+  if love.keyboard.isDown('escape') then
+    changeState('mainMenu')
+  end
+
+  if pause then
+    return
+  end
+
   world:update(dt)
 
   timeouts:update()
@@ -993,5 +1003,9 @@ function love.keypressed(key)
   if key == 'f' then
     love.window.setFullscreen(not love.window.getFullscreen())
     stars:load()
+  end
+
+  if key == 'p' and gameState == 'playing' then
+    pause = not pause
   end
 end
