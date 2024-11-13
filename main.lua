@@ -31,13 +31,93 @@ local function setTimeout(callback, delay)
   })
 end
 
-function timeouts:update()
-  for i, timeout in ipairs(timeouts) do
-    if love.timer.getTime() >= timeout.time then
-      timeout.callback()
-      table.remove(timeouts, i)
+function timeouts:clear()
+  for k in pairs(self) do
+    if type(k) == "number" then
+      self[k] = nil
     end
   end
+end
+
+function timeouts:update()
+  for i, timeout in ipairs(self) do
+    if love.timer.getTime() >= timeout.time then
+      timeout.callback()
+      table.remove(self, i)
+    end
+  end
+end
+
+local particles = {}
+
+function particles:clear()
+  for k in pairs(self) do
+    if type(k) == "number" then
+      self[k] = nil
+    end
+  end
+end
+
+function particles:create(x, y, num, speed, radius, life, color)
+  for i = 1, num do
+    local angle = 2 * math.pi * love.math.random()
+    local randomSpeed = speed * love.math.random()
+    local xVel = math.cos(angle) * randomSpeed
+    local yVel = math.sin(angle) * randomSpeed
+
+    local particle = {
+      x = x,
+      y = y,
+      xVel = xVel,
+      yVel = yVel,
+      radius = radius,
+      life = life
+    }
+
+    function particle:update(dt)
+      self.x = self.x + self.xVel * dt
+      self.y = self.y + self.yVel * dt
+      self.life = self.life - dt
+    end
+
+    function particle:draw()
+      love.graphics.setColor(color[1], color[2], color[3], self.life)
+      love.graphics.circle('fill', self.x, self.y, self.radius)
+    end
+
+    table.insert(self, particle)
+  end
+end
+
+function particles:update(dt)
+  for i, particle in ipairs(self) do
+    particle:update(dt)
+
+    if particle.life <= 0 then
+      table.remove(self, i)
+    end
+  end
+end
+
+function particles:draw()
+  for _, particle in ipairs(self) do
+    particle:draw()
+  end
+end
+
+local gameState = 'playing'
+
+local stateLoaders = {}
+
+local function changeState(state)
+  gameState = state
+
+  if stateLoaders[state] then
+    stateLoaders[state]()
+  end
+
+  timeouts:clear()
+  particles:clear()
 end
 
 local function generateShootSound()
@@ -63,7 +143,7 @@ local function generateShootSound()
   return source
 end
 
-local shootSound
+local shootSound = generateShootSound()
 
 local function generateExplosionSound()
   local rate = 44100
@@ -88,7 +168,7 @@ local function generateExplosionSound()
   return source
 end
 
-local explosionSound
+local explosionSound = generateExplosionSound()
 
 local stars = {
   starsList = {},
@@ -167,55 +247,6 @@ local function drawGrid(objects)
   end
 
   love.graphics.points(points)
-end
-
-local particles = {}
-
-function particles:create(x, y, num, speed, radius, life, color)
-  for i = 1, num do
-    local angle = 2 * math.pi * love.math.random()
-    local randomSpeed = speed * love.math.random()
-    local xVel = math.cos(angle) * randomSpeed
-    local yVel = math.sin(angle) * randomSpeed
-
-    local particle = {
-      x = x,
-      y = y,
-      xVel = xVel,
-      yVel = yVel,
-      radius = radius,
-      life = life
-    }
-
-    function particle:update(dt)
-      self.x = self.x + self.xVel * dt
-      self.y = self.y + self.yVel * dt
-      self.life = self.life - dt
-    end
-
-    function particle:draw()
-      love.graphics.setColor(color[1], color[2], color[3], self.life)
-      love.graphics.circle('fill', self.x, self.y, self.radius)
-    end
-
-    table.insert(particles, particle)
-  end
-end
-
-function particles:update(dt)
-  for i, particle in ipairs(particles) do
-    particle:update(dt)
-
-    if particle.life <= 0 then
-      table.remove(particles, i)
-    end
-  end
-end
-
-function particles:draw()
-  for _, particle in ipairs(particles) do
-    particle:draw()
-  end
 end
 
 local INIT_ENEMIES = 10
@@ -301,6 +332,10 @@ function spaceship:handleCollision()
 
   lives = lives - 1
 
+  if lives <= 0 then
+    changeState('gameOver')
+  end
+
   self.dead = true
   self:explode()
 
@@ -323,7 +358,11 @@ end
 function spaceship.bullets:load(parent)
   self.parent = parent
 
-  self = {}
+  for k in pairs(self) do
+    if type(k) == "number" then
+      self[k] = nil
+    end
+  end
 end
 
 function spaceship.bullets:createBullet()
@@ -409,7 +448,7 @@ function spaceship.chain:load(parent)
       world,
       self.x,
       self.y + (i - 1) * self.segmentLength,
-      "dynamic")
+      'dynamic')
     local shape = love.physics.newCircleShape(5)
     local fixture = love.physics.newFixture(body, shape, 1)
 
@@ -512,7 +551,7 @@ function spaceship.chain:draw()
 
   for i, segment in ipairs(self.chainList) do
     love.graphics.circle(
-      "line",
+      'line',
       segment.body:getX(),
       segment.body:getY(),
       segment.shape:getRadius())
@@ -535,6 +574,9 @@ function spaceship:load()
   self.angle = -math.pi / 2
   self.dead = false
   self.opacity = 1
+
+  camera.x = self.x
+  camera.y = self.y
 
   self.bullets:load(self)
   self.chain:load(self)
@@ -676,7 +718,11 @@ local function spawnEnemy()
 end
 
 function enemies:load()
-  self = {}
+  for k in pairs(self) do
+    if type(k) == "number" then
+      self[k] = nil
+    end
+  end
 
   for i = 1, INIT_ENEMIES do
     spawnEnemy()
@@ -684,13 +730,13 @@ function enemies:load()
 end
 
 function enemies:update(dt)
-  for _, enemy in ipairs(enemies) do
+  for _, enemy in ipairs(self) do
     enemy:update(dt)
   end
 end
 
 function enemies:draw()
-  for _, enemy in ipairs(enemies) do
+  for _, enemy in ipairs(self) do
     enemy:draw()
   end
 end
@@ -716,7 +762,11 @@ local function spawnCollectable()
 end
 
 function collectables:load()
-  self = {}
+  for k in pairs(self) do
+    if type(k) == "number" then
+      self[k] = nil
+    end
+  end
 
   for i = 1, INIT_COLLECTABLES do
     spawnCollectable()
@@ -748,21 +798,16 @@ local function nextLevel()
   loadLevel()
 end
 
-function love.load()
-  love.window.setMode(WINDOW_WIDTH, WINDOW_HEIGHT)
-  love.window.setTitle('Galactic Courier')
+local playing = {}
 
-  love.physics.setMeter(1)
-
-  world = love.physics.newWorld(0, 0, true)
-
-  shootSound = generateShootSound()
-  explosionSound = generateExplosionSound()
+function playing:load()
+  lives = 3
+  level = 1
 
   loadLevel()
 end
 
-function love.update(dt)
+function playing:update(dt)
   world:update(dt)
 
   timeouts:update()
@@ -778,7 +823,7 @@ function love.update(dt)
   end
 end
 
-function love.draw()
+function playing:draw()
   stars:draw()
 
   love.graphics.push()
@@ -804,18 +849,74 @@ function love.draw()
 
   love.graphics.setFont(font)
   love.graphics.setColor(1, 1, 1)
-  love.graphics.print("Collected: " .. #unloading.attachedCollectables .. " / " .. INIT_COLLECTABLES, 10, 10)
-  love.graphics.print("Lives: " .. lives, 10, 40)
-  love.graphics.print("Level: " .. level, 10, 70)
+  love.graphics.print('Collected: ' .. #unloading.attachedCollectables .. ' / ' .. INIT_COLLECTABLES, 10, 10)
+  love.graphics.print('Lives: ' .. lives, 10, 40)
+  love.graphics.print('Level: ' .. level, 10, 70)
+end
+
+stateLoaders.playing = playing.load
+
+local gameOver = {}
+
+function gameOver:load()
+
+end
+
+function gameOver:update(dt)
+  if love.keyboard.isDown('return') then
+    changeState('playing')
+  end
+end
+
+function gameOver:draw()
+  love.graphics.setFont(font)
+  love.graphics.setColor(1, 1, 1)
+  love.graphics.printf(
+    'Game Over',
+    0,
+    love.graphics.getHeight() / 2 - font:getHeight() / 1.25,
+    love.graphics.getWidth(),
+    'center')
+  love.graphics.printf(
+    'Press Enter to restart',
+    0,
+    love.graphics.getHeight() / 2 + font:getHeight() / 1.25,
+    love.graphics.getWidth(),
+    'center')
+end
+
+stateLoaders.gameOver = gameOver.load
+
+function love.load()
+  love.window.setMode(WINDOW_WIDTH, WINDOW_HEIGHT)
+  love.window.setTitle('Galactic Courier')
+
+  love.physics.setMeter(1)
+
+  world = love.physics.newWorld(0, 0, true)
+
+  playing:load()
+end
+
+function love.update(dt)
+  if gameState == 'playing' then
+    playing:update(dt)
+  elseif gameState == 'gameOver' then
+    gameOver:update(dt)
+  end
+end
+
+function love.draw()
+  if gameState == 'playing' then
+    playing:draw()
+  elseif gameState == 'gameOver' then
+    gameOver:draw()
+  end
 end
 
 function love.keypressed(key)
   if key == 'f' then
     love.window.setFullscreen(not love.window.getFullscreen())
     stars:load()
-  end
-
-  if key == 'r' then
-    love.event.quit('restart')
   end
 end
