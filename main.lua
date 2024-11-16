@@ -416,7 +416,11 @@ function spaceship.bullets:update(dt)
     bullet:update(dt)
 
     if bullet.x < 0 or bullet.x > LEVEL_WIDTH or
-        bullet.y < 0 or bullet.y > LEVEL_HEIGHT then
+        bullet.y < 0 or bullet.y > LEVEL_HEIGHT or
+        bullet.x < camera.x - love.graphics.getWidth() / 2 or
+        bullet.x > camera.x + love.graphics.getWidth() / 2 or
+        bullet.y < camera.y - love.graphics.getHeight() / 2 or
+        bullet.y > camera.y + love.graphics.getHeight() / 2 then
       table.remove(self, i)
     end
   end
