@@ -260,8 +260,8 @@ local INIT_COLLECTABLES = 10
 local collectables = {}
 
 local unloading = {
-  x = love.graphics.getWidth() / 2,
-  y = love.graphics.getHeight() / 2,
+  x = LEVEL_WIDTH / 4,
+  y = LEVEL_HEIGHT / 4,
   radius = 50,
   angle = 0,
 }
@@ -305,8 +305,8 @@ function unloading:draw()
 end
 
 local spaceship = {
-  x = love.graphics.getWidth() / 2,
-  y = love.graphics.getHeight() / 2,
+  x = LEVEL_WIDTH / 2,
+  y = LEVEL_HEIGHT / 2,
   xVel = 0,
   yVel = 0,
   angle = -math.pi / 2,
@@ -318,8 +318,8 @@ local spaceship = {
   bullets = {},
   lastShotTime = 0,
   chain = {
-    x = love.graphics.getWidth() / 2,
-    y = love.graphics.getHeight() / 2,
+    x = LEVEL_WIDTH / 2,
+    y = LEVEL_HEIGHT / 2,
     length = 10,
     segmentLength = 20,
     chainList = {},
@@ -585,8 +585,8 @@ function spaceship.chain:draw()
 end
 
 function spaceship:load(init)
-  self.x = love.graphics.getWidth() / 2
-  self.y = love.graphics.getHeight() / 2
+  self.x = LEVEL_WIDTH / 2
+  self.y = LEVEL_HEIGHT / 2
   self.xVel = 0
   self.yVel = 0
   self.angle = -math.pi / 2
@@ -702,17 +702,36 @@ function spaceship:draw()
   self.chain:draw()
 end
 
+local function isEnemyPositionOccupied(x, y, radius)
+  for _, enemy in ipairs(enemies) do
+    if checkCollisionCircles(x, y, radius, enemy.x, enemy.y, enemy.radius) then
+      return true
+    end
+  end
+
+  if checkCollisionCircles(x, y, radius, spaceship.x, spaceship.y, spaceship.radius) or
+      checkCollisionCircles(x, y, radius, unloading.x, unloading.y, unloading.radius) then
+    return true
+  end
+
+  return false
+end
+
 local function spawnEnemy()
-  local enemy = {
-    x = love.math.random(LEVEL_WIDTH),
-    y = love.math.random(LEVEL_HEIGHT),
-    xVel = 0,
-    yVel = 0,
-    angle = 0,
-    radius = 10,
-    speed = 50,
-    vertices = { 0, 10, 10, 0, 0, -10, -10, 0 }
-  }
+  local enemy
+
+  repeat
+    enemy = {
+      x = 20 + love.math.random(LEVEL_WIDTH - 40),
+      y = 20 + love.math.random(LEVEL_HEIGHT - 40),
+      xVel = 0,
+      yVel = 0,
+      angle = 0,
+      radius = 10,
+      speed = 50,
+      vertices = { 0, 10, 10, 0, 0, -10, -10, 0 }
+    }
+  until not isEnemyPositionOccupied(enemy.x, enemy.y, enemy.radius)
 
   function enemy:explode()
     particles:create(self.x, self.y, 10, 100, 2.5, 1, { 1, 0.8, 0.8 })
@@ -759,12 +778,41 @@ function enemies:draw()
   end
 end
 
+local function isCollectablePositionOccupied(x, y, radius)
+  for _, collectable in ipairs(collectables) do
+    if checkCollisionCircles(
+          x, y, radius, collectable.x, collectable.y, collectable.radius) then
+      return true
+    end
+  end
+
+  if checkCollisionCircles(x, y, radius, spaceship.x, spaceship.y, spaceship.radius) or
+      checkCollisionCircles(x, y, radius, unloading.x, unloading.y, unloading.radius) then
+    return true
+  end
+
+  for _, enemy in ipairs(enemies) do
+    if checkCollisionCircles(x, y, radius, enemy.x, enemy.y, enemy.radius) then
+      return true
+    end
+  end
+
+  return false
+end
+
 local function spawnCollectable()
-  local collectable = {
-    x = love.math.random(LEVEL_WIDTH),
-    y = love.math.random(LEVEL_HEIGHT),
-    radius = 5
-  }
+  local collectable
+
+  repeat
+    collectable = {
+      x = 10 + love.math.random(LEVEL_WIDTH - 20),
+      y = 10 + love.math.random(LEVEL_HEIGHT - 20),
+      radius = 5
+    }
+  until not isCollectablePositionOccupied(
+      collectable.x,
+      collectable.y,
+      collectable.radius)
 
   function collectable:update(dt)
     self.x = self.x % LEVEL_WIDTH
@@ -805,10 +853,10 @@ end
 
 local function loadLevel(init)
   stars:load()
+  spaceship:load(init)
+  unloading:load()
   enemies:load()
   collectables:load()
-  unloading:load()
-  spaceship:load(init)
 end
 
 local function nextLevel()
