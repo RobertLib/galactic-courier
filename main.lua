@@ -432,12 +432,12 @@ function spaceship.bullets:draw()
   end
 end
 
-function spaceship.chain:load(parent)
+function spaceship.chain:load(parent, init)
   self.parent = parent
 
   local lastLink = self.chainList[#self.chainList]
 
-  if lastLink and lastLink.attachedCollectables then
+  if not init and lastLink and lastLink.attachedCollectables then
     for _, collectable in ipairs(lastLink.attachedCollectables) do
       table.insert(collectables, collectable)
     end
@@ -445,6 +445,18 @@ function spaceship.chain:load(parent)
 
   self.x = self.parent.x
   self.y = self.parent.y
+
+  for _, segment in ipairs(self.chainList) do
+    if not segment.body:isDestroyed() then
+      segment.body:destroy()
+    end
+  end
+
+  for _, joint in ipairs(self.joints) do
+    if not joint:isDestroyed() then
+      joint:destroy()
+    end
+  end
 
   self.chainList = {}
   self.joints = {}
@@ -572,7 +584,7 @@ function spaceship.chain:draw()
   end
 end
 
-function spaceship:load()
+function spaceship:load(init)
   self.x = love.graphics.getWidth() / 2
   self.y = love.graphics.getHeight() / 2
   self.xVel = 0
@@ -585,7 +597,7 @@ function spaceship:load()
   camera.y = self.y
 
   self.bullets:load(self)
-  self.chain:load(self)
+  self.chain:load(self, init)
 end
 
 function spaceship:rotate(angle)
@@ -791,12 +803,12 @@ function collectables:draw()
   end
 end
 
-local function loadLevel()
+local function loadLevel(init)
   stars:load()
   enemies:load()
   collectables:load()
   unloading:load()
-  spaceship:load()
+  spaceship:load(init)
 end
 
 local function nextLevel()
@@ -815,7 +827,7 @@ function playing:load()
   lives = 3
   level = 1
 
-  loadLevel()
+  loadLevel(true)
 end
 
 function playing:update(dt)
@@ -837,7 +849,7 @@ function playing:update(dt)
   unloading:update(dt)
   spaceship:update(dt)
 
-  if #unloading.attachedCollectables == INIT_COLLECTABLES then
+  if #unloading.attachedCollectables >= INIT_COLLECTABLES then
     setTimeout(nextLevel, 2)
   end
 end
